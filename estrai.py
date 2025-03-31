@@ -3,10 +3,26 @@ from bs4 import BeautifulSoup
 from collections import defaultdict
 import re
 import time
+from docx import Document
+from docx.shared import Inches
 
 comune = "Campobasso"
-indirizzi = ["Via Toscana 22"]
+indirizzi = [
+    "Via De Sanctis 1",
+    "Via De Sanctis 11",
+    "Via De Sanctis 13",
+    "Via De Sanctis 15",
+    "Via Vico 31",
+    "Via Vico 35",
+    "Via Galanti 2",
+    "Via Galanti 4",
+]
 
+indirizzi = [
+    "Via Toscana 22",
+    "Via Toscana 30",
+    "Via Toscana 46",
+]
 
 # ESEMPIO PARTE DI CODICE PAGINE BIANCHE DI CUI FARE IL WEB SCRAPING
 """
@@ -84,83 +100,6 @@ headers = {
 }
 
 
-def estraiDaInelenco(soup, elenco_numeri):
-    # Inizializza la lista dei risultati
-    numeri_di_telefono = defaultdict(list)
-
-    # Trova gli elementi tr che contengono le informazioni degli utenti
-    elementi = [
-        tr
-        for tr in soup.find_all("tr")
-        if tr.find("td", class_="cerca", bgcolor="#FFFFFF")
-    ]
-
-    for elem in elementi:
-        nome = indirizzo = telefono = località = None
-
-        # Estrai nome
-        nome = elem.get_text(strip=True) or None
-
-        # Estrazione telefono
-        telefono_tag = elem.find_next("td", class_="dativ")
-        telefono = (
-            pulisci_numero(telefono_tag.get_text(strip=True)) if telefono_tag else None
-        )
-
-        # Trova indirizzo, comune, provincia e CAP
-        indirizzo_tag = elem.find_next("td", class_="dati")
-        indirizzo = (
-            indirizzo_tag.get_text(strip=True)
-            if indirizzo_tag
-            else "Indirizzo non trovato"
-        )
-
-        # Cerca il comune (presente in un tag td con la parola "Comune")
-        comune_tag = elem.find_next(
-            "td", class_="dati", string=lambda x: x and "Comune" in x
-        )
-        comune = (
-            comune_tag.get_text(strip=True).replace("Comune", "").strip()
-            if comune_tag
-            else "Comune non trovato"
-        )
-
-        # Cerca la provincia (presente in un tag td con la parola "Provincia")
-        provincia_tag = elem.find_next(
-            "td", class_="dati", string=lambda x: x and "Provincia" in x
-        )
-        provincia = (
-            provincia_tag.get_text(strip=True).replace("Provincia", "").strip()
-            if provincia_tag
-            else "Provincia non trovata"
-        )
-
-        # Cerca il CAP (presente in un tag td con la parola "CAP")
-        cap_tag = elem.find_next("td", class_="dati", string=lambda x: x and "CAP" in x)
-        cap = (
-            cap_tag.get_text(strip=True).replace("CAP", "").strip()
-            if cap_tag
-            else "CAP non trovato"
-        )
-
-        # Combina i dati per la località
-        località = f"{cap} {comune} {provincia}".strip()
-
-        # Aggiungi i numeri di telefono se non sono già stati estratti
-        if telefono and telefono not in elenco_numeri and telefono.isdigit():
-            elenco_numeri.add(telefono)
-            numeri_di_telefono["INELENCO"].append(
-                {
-                    "Nome": nome,
-                    "Indirizzo": indirizzo,
-                    "Telefono": telefono,
-                    "Località": località,
-                }
-            )
-
-    return numeri_di_telefono, elenco_numeri
-
-
 def pulisci_numero(numero):
     """Rimuove spazi e caratteri speciali, lasciando solo le cifre."""
     return re.sub(r"\D", "", numero)  # Rimuove tutto tranne i numeri
@@ -173,6 +112,7 @@ for ind in indirizzi:
     indirizzo_encoded = requests.utils.quote(ind)
 
     # --- Pagine Bianche ---
+    nome = via = telefono = località = None
     url = f"https://www.paginebianche.it/cerca-da-indirizzo?dv={comune.replace(' ', '%20')}%20{indirizzo_encoded}"
     print(url)
     response = requests.get(url, headers=headers)
@@ -221,51 +161,66 @@ for ind in indirizzi:
         print(f"Errore {response.status_code} nell'accesso a {url}")
 
     # --- InElenco ---
-    url = f"https://inelenco.com/?dir=cerca&nome=&comune={comune}&provincia=&indirizzo={ind.replace(' ', '+')}&telefono="
-    print(url)
-    response = requests.get(url, headers=headers)
+    nome = via = telefono = località = None
+    pagine = 1
+    da = 0
+    while da <= (pagine * 10):  # CICLO PER CONTROLLARE TUTTE LE PAGINE
+        url = f"https://mobile.inelenco.com/?dir=cerca&nome=&comune={comune}&provincia=&indirizzo={ind.replace(' ', '+')}&telefono=&da={da}"
+        print(url)
+        response = requests.get(url, headers=headers)
 
-    if response.status_code == 200:
-        soup = BeautifulSoup(response.text, "html.parser")
+        if response.status_code == 200:
+            soup = BeautifulSoup(response.text, "html.parser")
+            # Trova gli elementi tr che contengono le informazioni degli utenti
+            elementi = [
+                tr
+                for tr in soup.find_all("tr")
+                if tr.find("td", class_="cerca", bgcolor="#FFFFFF")
+            ]
 
-        num_parziali, elenco_numeri = estraiDaInelenco(soup, elenco_numeri)
-        numeri_di_telefono.update(num_parziali)
+            for elem in elementi:
+                nome = elem.get_text(strip=True)
+                if re.match(r"^Elenco telefonico", nome) or re.match(
+                    r"^La ricerca -", nome
+                ):
+                    continue  # SALTO SE NON VALIDO
 
-        # CONTROLLO SE CI SONO ALTRE PAGINE DI CUI ESTRARRE I NUMERI
-        tag_risultati = soup.find("td", id="risultati")
-        if tag_risultati:
-            match = re.search(r"de (\d+)", tag_risultati.get_text())
-            if match:
-                total_results = int(match.group(1))
-        pagine = total_results // 10
+                tag = elem.find_next("tr")
+                if tag:
+                    elemento_tag = tag.find("td", class_="dativ")
+                telefono = pulisci_numero(elemento_tag.get_text(strip=True))
 
-        # VADO AD ESTRARRE ANCHE LE ALTRE PAGINE
-        for i in range(1, pagine + 1):
-            da = i * 10
-            url = f"https://inelenco.com/?dir=cerca&nome=&comune={comune}&provincia=&indirizzo={ind.replace(' ', '+')}&telefono=&da={da}"
-            print(url)
-            response = requests.get(url, headers=headers)
+                numeri_di_telefono["INELENCO"].append(
+                    {
+                        "Nome": nome,
+                        "Indirizzo": via,
+                        "Telefono": telefono,
+                        "Località": località,
+                    }
+                )
 
-            if response.status_code == 200:
-                soup = BeautifulSoup(response.text, "html.parser")
+            if da == 0:  # CONTROLLO IL NUMERO DI PAGINE UNA VOLTA SOLA
+                # CONTROLLO SE CI SONO ALTRE PAGINE DI CUI ESTRARRE I NUMERI
+                tag_risultati = soup.find("td", id="risultati")
+                if tag_risultati:
+                    match = re.search(r"de (\d+)", tag_risultati.get_text())
+                    if match:
+                        total_results = int(match.group(1))
+                pagine = total_results // 10
 
-            num_parziali, elenco_numeri = estraiDaInelenco(soup, elenco_numeri)
-            numeri_di_telefono.update(num_parziali)
+        else:
+            print(f"Errore {response.status_code} nell'accesso a {url}")
 
-    else:
-        print(f"Errore {response.status_code} nell'accesso a {url}")
+        da += 10  # VADO ALLA PAGINA SUCCESSIVA
+        # time.sleep(0.1)  # Pausa di 1 secondo tra le richieste
 
-    n += 1
-    print(f"{n}/{len(indirizzi)} INDIRIZZI ESTRATTI...")
-
-    # Delay tra le richieste
-    time.sleep(1)  # Pausa di 1 secondo tra le richieste
-
-print("")  # RIGA VUOTA
 
 # --- Stampa risultati ---
 if numeri_di_telefono:
+    document = Document()
     for sito, contatti in numeri_di_telefono.items():
+        document.add_paragraph(f"{sito}")
+        document.add_paragraph(f"{"-" * 30}")
         for item in contatti:
             print(sito)
             print(f"Nome: {item['Nome']}")
@@ -273,3 +228,12 @@ if numeri_di_telefono:
             print(f"Telefono: {item['Telefono']}")
             print(f"Località: {item['Località']}")
             print("")
+
+            document.add_paragraph(f"{item['Nome']}")
+            document.add_paragraph(f"{item['Indirizzo']}")
+            document.add_paragraph(f"{item['Telefono']}")
+            document.add_paragraph(f"{item['Località']}")
+            document.add_paragraph(f"")
+
+document.save("contatti.docx")
+print("")
