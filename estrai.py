@@ -190,14 +190,18 @@ for ind in indirizzi:
                     elemento_tag = tag.find("td", class_="dativ")
                 telefono = pulisci_numero(elemento_tag.get_text(strip=True))
 
-                numeri_di_telefono["INELENCO"].append(
-                    {
-                        "Nome": nome,
-                        "Indirizzo": via,
-                        "Telefono": telefono,
-                        "Località": località,
-                    }
-                )
+                if (
+                    telefono not in elenco_numeri and telefono.isdigit()
+                ):  # Evita numeri errati
+                    elenco_numeri.add(telefono)
+                    numeri_di_telefono["INELENCO"].append(
+                        {
+                            "Nome": nome,
+                            "Indirizzo": via,
+                            "Telefono": telefono,
+                            "Località": località,
+                        }
+                    )
 
             if da == 0:  # CONTROLLO IL NUMERO DI PAGINE UNA VOLTA SOLA
                 # CONTROLLO SE CI SONO ALTRE PAGINE DI CUI ESTRARRE I NUMERI
