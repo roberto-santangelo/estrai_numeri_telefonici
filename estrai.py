@@ -9,6 +9,7 @@ import socket
 
 
 def internet_connection():
+    print("STO TESTANDO LA TUA CONNESSIONE AD INTERNET...")
     remote_server = "www.google.com"
     port = 80
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -19,6 +20,7 @@ def internet_connection():
     except socket.error:
         return False
     finally:
+        print("\033[F" + "\033[2K\r", end="")
         sock.close()
 
 
