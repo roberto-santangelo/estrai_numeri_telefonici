@@ -4,6 +4,7 @@ from bs4 import BeautifulSoup
 from collections import defaultdict
 import re, os
 import docx
+from docx.shared import Inches, Cm, Pt, RGBColor
 from getpass import getpass
 import socket
 
@@ -224,11 +225,43 @@ try:
 
     # --- Stampa risultati ---
     if numeri_di_telefono:
-        document = docx.Document()
-        h1 = document.add_heading(f"CONTATTI TERRITORIO - {cap} {comune.upper()}")
+        doc = docx.Document()
+
+        # CAMBIO LE SEZIONI
+        sections = doc.sections
+        for section in sections:
+            section.top_margin = Cm(1.5)
+            section.bottom_margin = Cm(1.5)
+            section.left_margin = Cm(1.5)
+            section.right_margin = Cm(1.5)
+
+        # CAMBIO GLI STILI DEI CARATTERI
+        ## TITOLO
+        stile_titolo = doc.styles["Heading 1"].font
+        stile_titolo.name = "Calibri"
+        stile_titolo.size = docx.shared.Pt(12)
+        stile_titolo.color.rgb = RGBColor(53, 79, 82)
+
+        ## STILE NORMALE
+        stile_normale = doc.styles["Normal"]
+        stile_normale.paragraph_format.line_spacing = 1
+        font_normal = stile_normale.font
+        font_normal.name = "Calibri"
+        font_normal.size = Pt(12)
+
+        formato_paragrafo = stile_normale.paragraph_format
+        formato_paragrafo.space_before = Pt(0)
+        formato_paragrafo.space_after = Pt(0)
+
+        # Aggiungi paragrafo con spaziatura personalizzata
+        # paragrafo = doc.add_paragraph("Testo di esempio con spaziatura personalizzata.")
+        # paragrafo.paragraph_format.space_before = Pt(3)
+        # paragrafo.paragraph_format.space_after = Pt(5)
+
+        h1 = doc.add_heading(f"CONTATTI TERRITORIO - {cap} {comune.upper()}")
 
         for sito, contatti in numeri_di_telefono.items():
-            paragrafo_sito = document.add_paragraph(f"{sito}\n{'-' * 30}")
+            paragrafo_sito = doc.add_paragraph(f"{sito}\n{'-' * 30}")
             for item in contatti:
                 print(sito)
                 print(f"Nome: {item['Nome']}")
@@ -237,21 +270,44 @@ try:
                 print(f"Telefono: {item['Telefono'].replace(prefisso, f'{prefisso} ')}")
                 print("")
 
-                document.add_paragraph(f"{item['Nome']}")
-                document.add_paragraph(f"{item['Indirizzo']}")
+                paragraph = doc.add_paragraph(f"{item['Nome']}")
+                paragraph = doc.add_paragraph(f"{item['Indirizzo']}")
                 # document.add_paragraph(f"{item['Località']}")
-                document.add_paragraph(
+                paragraph = doc.add_paragraph(
                     f"{item['Telefono'].replace(prefisso, f'{prefisso} ')}"
                 )
+                paragraph = doc.add_paragraph(f"")
+                paragraph.paragraph_format.space_before = Pt(3)
+                paragraph.paragraph_format.space_after = Pt(5)
 
-                document.add_paragraph(f"")
+        print(f"NUMERO DI CONTATTI TROVATI: {numero_contatti}")
 
-                nome_file = "contatti telefonici estratti dal programma.docx"
-                document.save(nome_file)
-        print(
-            f'I CONTATTI TROVATI SONO STATI SCRITTI NEL FILE "{nome_file}" NELLA CARTELLA CORRENTE OVVERO IN: \n{os.getcwd()}'
-        )
-    print(f"NUMERO DI CONTATTI TROVATI: {numero_contatti}")
+        nome_file = "contatti estratti.docx"
+        salva = False
+        if os.path.exists(nome_file):
+            while True:
+                risposta = (
+                    input(
+                        f'IL FILE "{nome_file}" È GIÀ ESISTENTE. VUOI SOVRASCRIVERLO? (S/N) '
+                    )
+                    .strip()
+                    .upper()
+                )
+
+                if risposta == "S":
+                    salva = True
+                    break
+                elif risposta == "N":
+                    break
+                else:
+                    print("Risposta non valida. Inserisci 'S' per sì o 'N' per no.")
+        else:
+            salva = True
+
+        if salva:
+            doc.save(nome_file)
+            print(f'Contatti salvati in "{nome_file}" nella cartella:\n{os.getcwd()}')
+
 except Exception as err:
     print(f"ERRORE: {err}")
 finally:
